@@ -43,6 +43,35 @@ async def test_feed_push_lands_in_rx_queue():
 
 
 @pytest.mark.asyncio
+async def test_feed_auth_reply_ok_byte():
+    # v0.0.012: the modem answers the handshake with 0x01 (accepted) so an
+    # automated client can tell "authenticated" from a silent close.
+    feed: asyncio.Queue = asyncio.Queue(maxsize=10)
+    server = modem.ModemServer(feed_token="sekrit", rx_feed=feed)
+    reader, writer, srv = await _connect_feed(server, b"sekrit")
+    try:
+        reply = await asyncio.wait_for(reader.read(1), 2)
+        assert reply == b"\x01"
+    finally:
+        writer.close()
+        srv.close()
+
+
+@pytest.mark.asyncio
+async def test_feed_auth_reply_fail_byte():
+    # ...and with 0x00 (rejected) instead of a bare close.
+    feed: asyncio.Queue = asyncio.Queue(maxsize=10)
+    server = modem.ModemServer(feed_token="sekrit", rx_feed=feed)
+    reader, writer, srv = await _connect_feed(server, b"wrong")
+    try:
+        reply = await asyncio.wait_for(reader.read(1), 2)
+        assert reply == b"\x00"
+        assert server.feed_client is None
+    finally:
+        writer.close()
+        srv.close()
+
+@pytest.mark.asyncio
 async def test_feed_wrong_token_rejected():
     feed: asyncio.Queue = asyncio.Queue(maxsize=10)
     server = modem.ModemServer(feed_token="sekrit", rx_feed=feed)

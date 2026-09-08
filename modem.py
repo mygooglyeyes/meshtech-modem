@@ -411,6 +411,15 @@ class ModemServer:
         supplied = first.decode("utf-8", "replace").strip()
         if not hmac.compare_digest(supplied, self.feed_token):
             log.warning("Feed auth REJECTED from %s", peer)
+            # FEED_AUTH_FAIL reply (added v0.0.012): lets an automated
+            # client tell "wrong password" from "modem down" instead of
+            # guessing from the bare close. Plain 0x00 is accepted as the
+            # silent close by older clients - fully compatible.
+            try:
+                writer.write(b"\x00")
+                await writer.drain()
+            except (ConnectionResetError, BrokenPipeError):
+                pass
             writer.close()
             try:
                 await writer.wait_closed()
@@ -425,6 +434,13 @@ class ModemServer:
             old.writer.close()
         else:
             log.info("Feed client authenticated from %s", peer)
+        # FEED_AUTH_OK reply (added v0.0.012): the client knows the slot is
+        # its and can report the feed as live immediately.
+        try:
+            writer.write(b"\x01")
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            return
         try:
             await self.feed_client.run()
         finally:

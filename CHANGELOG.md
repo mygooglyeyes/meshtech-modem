@@ -6,6 +6,13 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.012
+
+Feed handshake now replies one byte: 0x01 = password accepted, 0x00 =
+rejected. Lets an automated feed client (the bot's feed pusher) tell a
+wrong password from a dead modem instead of guessing from the bare
+close. Fully backwards compatible - older clients ignore the reply.
+
 ## 0.0.011 - 2026-09-08
 
 Feed password out of the config file (same pattern as the bot's
