@@ -24,10 +24,10 @@ demo_interval = 10
 # hears or transmits. Protected by construction:
 #   - feed_bind 127.0.0.1 = only this machine can reach the feed port
 #     (use 0.0.0.0 ONLY with a firewall rule limiting the bot's IP)
-#   - feed_token is MANDATORY - the feed port does not open without
-#     one; the bot must send this exact token to push
-#   - one feed client at a time; a correct-token newcomer displaces
-#     a stale one, wrong tokens are rejected
+#   - the feed PASSWORD lives in its own protected file .feed_token
+#     (same folder as this config) - created by set-feed-token.sh,
+#     never written here. No password file = feed port stays closed.
+#   - one feed client at a time; a correct-password newcomer
+#     displaces a stale one, wrong passwords are rejected
 feed_bind = 127.0.0.1
 feed_port = 5056
-feed_token =

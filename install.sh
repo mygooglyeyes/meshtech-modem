@@ -30,6 +30,23 @@ if [ ! -f modem.conf ]; then
     echo "Created modem.conf from the example."
 fi
 
+# Feed password: without it the feed port stays closed.
+if [ ! -f .feed_token ]; then
+    echo
+    echo "No feed password found (.feed_token missing)."
+    echo "Set one now so the bot can push packets (recommended),"
+    echo "or skip and run ./set-feed-token.sh later."
+    if [[ -t 0 ]]; then
+        read -r -p "Set the feed password now? [Y/n] " yn
+        if [[ ! "$yn" =~ ^[Nn] ]]; then
+            ./set-feed-token.sh && exit 0
+        fi
+        echo "Skipping - remember: no password file = feed port closed."
+    else
+        echo "Non-interactive install - run ./set-feed-token.sh afterwards."
+    fi
+fi
+
 # systemd unit runs run.sh, which handles the venv transparently.
 sudo tee /etc/systemd/system/meshtech-modem.service > /dev/null <<EOF
 [Unit]

@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import os
 import struct
 import time
 from typing import Optional
@@ -501,9 +502,15 @@ class ModemServer:
 def load_config(path: str) -> dict:
     """Read a simple key = value config file (no dependencies).
 
-    Supported keys: host, port, token. Blank lines and # comments are
-    ignored. Values keep internal whitespace; keys are case-insensitive.
-    Missing file -> empty dict (defaults apply).
+    Supported keys: host, port, feed_bind, feed_port, demo_feed,
+    demo_interval. Blank lines and # comments are ignored. Values keep
+    internal whitespace; keys are case-insensitive. Missing file ->
+    empty dict (defaults apply).
+
+    NOTE: the feed password is NOT read here. It lives in its own
+    root-only file (.feed_token, next to the config) written by
+    set-feed-token.sh - never in this file, which is world-readable
+    once committed anywhere.
     """
     cfg: dict[str, str] = {}
     try:
@@ -517,6 +524,29 @@ def load_config(path: str) -> dict:
     except FileNotFoundError:
         log.warning("Config file %s not found - using defaults", path)
     return cfg
+
+
+def load_feed_token(config_path: str) -> str:
+    """Read the feed password from its own protected file.
+
+    File layout (same pattern as the bot's dashboard password):
+      <same folder as config>/.feed_token  - one line, mode 600,
+      written by set-feed-token.sh. Missing file = no feed port.
+    """
+    token_path = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                              ".feed_token")
+    try:
+        with open(token_path, encoding="utf-8") as f:
+            token = f.readline().strip()
+            if token:
+                return token
+            log.warning("%s exists but is empty - feed port stays off", token_path)
+            return ""
+    except FileNotFoundError:
+        return ""
+    except OSError as e:
+        log.warning("Cannot read %s (%s) - feed port stays off", token_path, e)
+        return ""
 
 
 # Demo feed: a stable, deliberately-public demo identity. The seed is
@@ -582,7 +612,13 @@ def main() -> None:
                      else float(cfg.get("demo_interval", "10")))
     feed_bind = cfg.get("feed_bind", "127.0.0.1")
     feed_port = int(cfg.get("feed_port", "5056"))
-    feed_token = cfg.get("feed_token", "")
+    # The password comes from its own protected file, never from the
+    # config. An old feed_token line in the config is ignored (and
+    # warned about) so leaked values die with the upgrade.
+    if "feed_token" in cfg:
+        log.warning("feed_token found in %s - IGNORED for security; "
+                    "use set-feed-token.sh (writes .feed_token)", args.config)
+    feed_token = load_feed_token(args.config)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

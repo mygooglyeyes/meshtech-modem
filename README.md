@@ -59,14 +59,28 @@ systemd service (`meshtech-modem`) that starts on boot and restarts
 if it crashes. You never touch the virtualenv.
 
 Settings live in `modem.conf` in the repo folder (created from
-`modem.conf.example` on first install): listen host and port, optional
-auth token, and the demo feed switch. After editing it:
+`modem.conf.example` on first install): listen host and port and the
+demo feed switch. After editing it:
 
 ```
 sudo systemctl restart meshtech-modem
 ```
 
-Everyday commands:
+Everyday management is easiest through the control panel:
+
+```
+sudo ./manage.sh
+```
+
+It offers: set / change the feed password, update the software,
+restart the service, and follow the live log.
+
+The feed password (used by the bot to push packets) lives in its own
+protected file, `.feed_token`, created by the control panel or
+`./set-feed-token.sh` - never in `modem.conf`. No password file means
+the feed port stays closed.
+
+Direct service commands, if you prefer:
 
 - `systemctl status meshtech-modem` - is it running?
 - `journalctl -u meshtech-modem -f` - live log (connections, config,

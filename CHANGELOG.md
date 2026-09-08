@@ -6,6 +6,16 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.011 - 2026-09-08
+
+Feed password out of the config file (same pattern as the bot's
+dashboard password): set-feed-token.sh writes .feed_token (mode 600,
+next to modem.conf) and restarts the service; manage.sh adds the
+modem's own control panel with that as menu item 1. A feed_token
+line left in modem.conf is ignored with a warning, so leaked values
+die with the upgrade. No .feed_token file = feed port stays closed.
+Four new tests (28 total).
+
 ## 0.0.010 - 2026-09-08
 
 Feed hardening + CI gap: a full RX feed queue now drops a packet
