@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 # Local settings - never committed (copy of modem.conf.example)
 modem.conf
+
+# Agent working files (Codebuff skills etc.)
+.freebuff/

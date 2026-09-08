@@ -6,6 +6,15 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.006 - 2026-09-08
+
+Demo feed for end-to-end testing: `demo_feed = true` in modem.conf
+(or `--demo-feed`) injects a clearly-labeled synthetic packet every
+demo_interval seconds, so the full receive path into openHop's packet
+log can be verified without a real radio. Four new tests (20 total).
+Also fixes the executable bit on run.sh/install.sh in git so fresh
+clones work without a manual chmod.
+
 ## 0.0.005 - 2026-09-08
 
 Service install for the Linux box: `install.sh` sets up a systemd

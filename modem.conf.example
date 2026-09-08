@@ -13,3 +13,9 @@ port = 5055
 # Shared secret openHop must send in its AUTH handshake. Leave empty
 # for no auth (fine on a trusted home LAN).
 token =
+
+# Demo feed: injects a clearly-labeled synthetic test packet every
+# demo_interval seconds, for end-to-end testing (watch it appear in
+# openHop's packet log). Leave off in normal use.
+demo_feed = false
+demo_interval = 10

@@ -276,11 +276,14 @@ class ModemServer:
     """Accepts openHop connections and broadcasts the MCP feed."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 5055,
-                 token: str = "", rx_feed: Optional[asyncio.Queue] = None):
+                 token: str = "", rx_feed: Optional[asyncio.Queue] = None,
+                 demo_feed: bool = False, demo_interval: float = 10.0):
         self.host = host
         self.port = port
         self.token = token
         self.rx_feed = rx_feed  # (rssi, snr, signal_rssi, data) tuples
+        self.demo_feed = demo_feed
+        self.demo_interval = demo_interval
         self.config = struct.pack(RADIO_CONFIG_FMT, 910525000, 62500, 7, 5, 22, 0x12, 17)
         self.started = time.time()
         self.rx_count = 0
@@ -326,6 +329,21 @@ class ModemServer:
                 except (ConnectionResetError, BrokenPipeError):
                     pass
 
+    async def demo_loop(self) -> None:
+        """Inject a clearly-synthetic packet every demo_interval seconds.
+
+        For end-to-end testing only (e.g. watching openHop's packet log
+        receive through the emulator). Not real mesh traffic.
+        """
+        if self.rx_feed is None:
+            return
+        n = 0
+        while True:
+            await asyncio.sleep(self.demo_interval)
+            n += 1
+            self.rx_feed.put_nowait(make_demo_packet(n))
+            log.info("Demo packet #%d injected", n)
+
     async def _handle_client(self, reader: asyncio.StreamReader,
                              writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
@@ -348,11 +366,14 @@ class ModemServer:
         log.info("meshtech-modem listening on %s:%d (token %s)",
                  self.host, self.port, "set" if self.token else "open")
         pump = asyncio.create_task(self.feed_pump())
+        demo = asyncio.create_task(self.demo_loop()) if self.demo_feed else None
         async with server:
             try:
                 await server.serve_forever()
             finally:
                 pump.cancel()
+                if demo is not None:
+                    demo.cancel()
 
 
 def load_config(path: str) -> dict:
@@ -376,6 +397,17 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def make_demo_packet(n: int) -> tuple[int, float, int, bytes]:
+    """A synthetic but well-formed MeshCore-style packet for testing.
+
+    A small text frame with a visible DEMO prefix and a counter, plus
+    plausible radio metadata (strong signal, mid SNR).
+    """
+    text = f"DEMO test packet {n} from meshtech-modem".encode("utf-8")
+    frame = bytes([0x01, len(text)]) + text        # 0x01 = CLR text payload
+    return (-42 + (n % 8), 9.5, -50, frame)
+
+
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="openHop pymc_tcp modem emulator")
@@ -384,6 +416,10 @@ def main() -> None:
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--token", default=None)
+    parser.add_argument("--demo-feed", action="store_true",
+                        help="inject a synthetic test packet every few seconds")
+    parser.add_argument("--demo-interval", type=float, default=None,
+                        help="seconds between demo packets (default 10)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -392,13 +428,17 @@ def main() -> None:
     host = args.host if args.host is not None else cfg.get("host", "127.0.0.1")
     port = args.port if args.port is not None else int(cfg.get("port", "5055"))
     token = args.token if args.token is not None else cfg.get("token", "")
+    demo_feed = args.demo_feed or cfg.get("demo_feed", "").lower() in ("1", "true", "yes")
+    demo_interval = (args.demo_interval if args.demo_interval is not None
+                     else float(cfg.get("demo_interval", "10")))
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     modem = ModemServer(host=host, port=port, token=token,
-                        rx_feed=asyncio.Queue(maxsize=1000))
+                        rx_feed=asyncio.Queue(maxsize=1000),
+                        demo_feed=demo_feed, demo_interval=demo_interval)
     try:
         asyncio.run(modem.serve())
     except KeyboardInterrupt:
