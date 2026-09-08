@@ -6,6 +6,12 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.002 - 2026-09-08
+
+Add requirements-dev.txt pinning the test dependencies (pytest,
+pytest-asyncio, pytest-timeout), so the test environment is one
+command: python -m pip install -r requirements-dev.txt
+
 ## 0.0.001 - 2026-09-08
 
 Project start. Protocol implementation decoded from openhop-core's
