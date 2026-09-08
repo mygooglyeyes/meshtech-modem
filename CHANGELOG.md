@@ -6,6 +6,12 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.003 - 2026-09-08
+
+CI: GitHub Actions workflow runs the protocol test suite on every
+push to DEV and every pull request to main
+(.github/workflows/tests.yml).
+
 ## 0.0.002 - 2026-09-08
 
 Add requirements-dev.txt pinning the test dependencies (pytest,
