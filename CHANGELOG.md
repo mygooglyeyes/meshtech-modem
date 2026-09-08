@@ -6,6 +6,12 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.004 - 2026-09-08
+
+CI also runs on every push to main, not just DEV and main-PRs. This
+lets main's checks be selected as "required" in branch protection,
+and every promotion to main gets tested on arrival.
+
 ## 0.0.003 - 2026-09-08
 
 CI: GitHub Actions workflow runs the protocol test suite on every
