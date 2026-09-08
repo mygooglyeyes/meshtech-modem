@@ -1,0 +1,5 @@
+# Local development artifacts - never committed
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
