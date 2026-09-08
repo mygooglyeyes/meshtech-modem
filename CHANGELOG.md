@@ -6,6 +6,12 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.008 - 2026-09-08
+
+README documents the install & service workflow: one-time
+`./install.sh`, systemd service commands, modem.conf settings and
+demo-feed usage, and the update ritual (git pull + restart).
+
 ## 0.0.007 - 2026-09-08
 
 Demo packets are now real, signed flood ADVERTs (Ed25519 via PyNaCl,

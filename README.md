@@ -40,9 +40,53 @@ and receives every packet the radio hears.
 
 ## Status
 
-Early development. The protocol implementation is complete (decoded
-from openhop-core's driver and the openhop_modem firmware source);
-the radio feed side is being built alongside the bot's MCP module.
+Running on the bench Linux box as a systemd service, verified
+end-to-end with openHop Repeater (connect, handshake, packet parse).
+The radio feed side is being built alongside the bot's MCP module -
+until it exists, the `demo_feed` option injects synthetic packets
+for testing.
+
+## Install & run (Linux)
+
+One-time, inside a clone of this repo:
+
+```
+./install.sh
+```
+
+That creates the virtualenv, installs dependencies, and installs a
+systemd service (`meshtech-modem`) that starts on boot and restarts
+if it crashes. You never touch the virtualenv.
+
+Settings live in `modem.conf` in the repo folder (created from
+`modem.conf.example` on first install): listen host and port, optional
+auth token, and the demo feed switch. After editing it:
+
+```
+sudo systemctl restart meshtech-modem
+```
+
+Everyday commands:
+
+- `systemctl status meshtech-modem` - is it running?
+- `journalctl -u meshtech-modem -f` - live log (connections, config,
+  demo packets)
+
+Updating to a new version:
+
+```
+git pull && sudo systemctl restart meshtech-modem
+```
+
+## Testing without a radio (demo feed)
+
+With `demo_feed = true` in `modem.conf`, the modem injects a signed
+advert for a node called `DEMO` every `demo_interval` seconds (10 by
+default). openHop parses it and shows the node with a live last-seen
+time - proof the whole receive path works with no radio attached.
+
+Leave it off in normal use: it broadcasts to the mesh every interval
+for as long as it is on.
 
 ## Docs
 
