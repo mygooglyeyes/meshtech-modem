@@ -1,49 +1,55 @@
-"""Tests for the demo feed (synthetic packet injection)."""
+"""Tests for the demo feed: signed advert packet construction."""
 from __future__ import annotations
 
-import modem  # noqa: E402
+import time
+
+import pytest
+
+from modem import DEMO_NAME, DEMO_SEED, make_demo_advert
+
+nacl = pytest.importorskip("nacl")
 
 
-def test_make_demo_packet_shape():
-    rssi, snr, sig, data = modem.make_demo_packet(1)
-    assert -42 <= rssi <= -35
+def test_demo_advert_shape():
+    rssi, snr, sig, data = modem_advert(1)
+    assert -50 <= rssi <= -40
     assert snr == 9.5
     assert sig == -50
-    assert data.startswith(b"\x01")
-    assert b"DEMO test packet 1" in data
+    # header + path_len + 32B pubkey + 4B ts + 64B sig + appdata
+    assert len(data) == 2 + 32 + 4 + 64 + 1 + len(DEMO_NAME)
+    assert data[0] == 0x11          # flood route, payload type 4, ver 0
+    assert data[1] == 0x00          # path_len 0
+    assert data.endswith(bytes([0x81]) + DEMO_NAME.encode())
 
 
-def test_make_demo_packet_counter_varies():
-    _, _, _, first = modem.make_demo_packet(1)
-    _, _, _, second = modem.make_demo_packet(2)
-    assert first != second
-    assert b"DEMO test packet 2" in second
+def modem_advert(n):
+    return make_demo_advert(n)
 
 
-def test_demo_loop_injects_packets():
-    import asyncio
-
-    async def run():
-        feed: asyncio.Queue = asyncio.Queue(maxsize=10)
-        server = modem.ModemServer(rx_feed=feed, demo_feed=True, demo_interval=0.05)
-        task = asyncio.create_task(server.demo_loop())
-        pkt = await asyncio.wait_for(feed.get(), timeout=2.0)
-        task.cancel()
-        return pkt
-
-    rssi, snr, sig, data = asyncio.run(run())
-    assert b"DEMO test packet" in data
+def test_demo_adverts_differ_and_timestamp_advances():
+    _, _, _, a = make_demo_advert(1)
+    _, _, _, b = make_demo_advert(2)
+    assert a != b
+    # timestamp sits at bytes 34..38 (little-endian u32) and must advance
+    ts_a = int.from_bytes(a[34:38], "little")
+    ts_b = int.from_bytes(b[34:38], "little")
+    assert ts_b > ts_a
 
 
-def test_demo_loop_off_when_disabled():
-    import asyncio
+def test_demo_advert_signature_verifies():
+    from nacl.signing import VerifyKey
 
-    async def run():
-        feed: asyncio.Queue = asyncio.Queue(maxsize=10)
-        server = modem.ModemServer(rx_feed=feed, demo_feed=False)
-        task = asyncio.create_task(server.demo_loop())
-        await asyncio.sleep(0.1)
-        assert feed.empty()
-        task.cancel()
+    _, _, _, data = make_demo_advert(7)
+    pubkey = data[2:34]
+    ts = data[34:38]
+    appdata = data[102:]
+    signature = data[38:102]
+    VerifyKey(pubkey).verify(pubkey + ts + appdata, signature)
 
-    asyncio.run(run())
+
+def test_demo_identity_stable_across_restarts():
+    from nacl.signing import SigningKey
+
+    expected = bytes(SigningKey(DEMO_SEED).verify_key.encode())
+    _, _, _, data = make_demo_advert(3)
+    assert data[2:34] == expected

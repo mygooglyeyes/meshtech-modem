@@ -6,6 +6,16 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.007 - 2026-09-08
+
+Demo packets are now real, signed flood ADVERTs (Ed25519 via PyNaCl,
+the first runtime dependency): header 0x11, path_len 0, 32B pubkey,
+timestamp, 64B signature, appdata flags 0x81 + name "DEMO". The
+repeater verifies the signature, registers the DEMO node, and its
+last-seen updates on every packet. First live test showed the old
+demo bytes decoded as a malformed REQ - the modem TCP path itself
+was already proven end to end.
+
 ## 0.0.006 - 2026-09-08
 
 Demo feed for end-to-end testing: `demo_feed = true` in modem.conf

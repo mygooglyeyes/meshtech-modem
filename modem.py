@@ -15,6 +15,7 @@ MCP feed is the next step after the MCP exists.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import logging
 import struct
@@ -341,8 +342,8 @@ class ModemServer:
         while True:
             await asyncio.sleep(self.demo_interval)
             n += 1
-            self.rx_feed.put_nowait(make_demo_packet(n))
-            log.info("Demo packet #%d injected", n)
+            self.rx_feed.put_nowait(make_demo_advert(n))
+            log.info("Demo advert #%d injected", n)
 
     async def _handle_client(self, reader: asyncio.StreamReader,
                              writer: asyncio.StreamWriter) -> None:
@@ -397,15 +398,42 @@ def load_config(path: str) -> dict:
     return cfg
 
 
-def make_demo_packet(n: int) -> tuple[int, float, int, bytes]:
-    """A synthetic but well-formed MeshCore-style packet for testing.
+# Demo feed: a stable, deliberately-public demo identity. The seed is
+# hard-coded so the DEMO node keeps the same pubkey/name across
+# restarts; it protects nothing and is not a secret.
+DEMO_NAME = "DEMO"
+DEMO_SEED = hashlib.sha256(b"meshtech-modem demo node seed (public)").digest()
 
-    A small text frame with a visible DEMO prefix and a counter, plus
-    plausible radio metadata (strong signal, mid SNR).
+def make_demo_advert(n: int) -> tuple[int, float, int, bytes]:
+    """Build a well-formed, signed flood ADVERT packet for testing.
+
+    Wire format (MeshCore/openHop, see PROTOCOL notes in openhop_core):
+      header(1) = ROUTE_FLOOD(0x01) | PAYLOAD_TYPE_ADVERT(0x04)<<2 | ver 0
+      path_len(1) = 0x00
+      pubkey(32) + timestamp(4 LE) + signature(64) + appdata
+    appdata = flags(1) + name utf-8, flags = chat-node | has-name (0x81)
+
+    The signature is a real Ed25519 signature over pubkey+timestamp+
+    appdata (openHop verifies before accepting an advert). Each packet
+    carries a fresh timestamp so openHop's dedupe never drops it and
+    the node's last-seen time keeps updating.
     """
-    text = f"DEMO test packet {n} from meshtech-modem".encode("utf-8")
-    frame = bytes([0x01, len(text)]) + text        # 0x01 = CLR text payload
-    return (-42 + (n % 8), 9.5, -50, frame)
+    try:
+        from nacl.signing import SigningKey
+    except ImportError as e:
+        raise RuntimeError(
+            "demo_feed requires PyNaCl (pip install pynacl)"
+        ) from e
+
+    signing_key = SigningKey(DEMO_SEED)
+    pubkey = bytes(signing_key.verify_key.encode())
+    ts_bytes = int(time.time() + n).to_bytes(4, "little")
+    appdata = bytes([0x81]) + DEMO_NAME.encode("utf-8")
+    signature = signing_key.sign(pubkey + ts_bytes + appdata).signature
+
+    header = 0x11          # flood route, payload type 4 (ADVERT), version 0
+    packet = bytes([header, 0x00]) + pubkey + ts_bytes + signature + appdata
+    return (-45, 9.5, -50, packet)
 
 
 def main() -> None:

@@ -21,7 +21,8 @@ if [ ! -x .venv/bin/python ]; then
     echo "Creating virtualenv..."
     python3 -m venv .venv
 fi
-# No external packages needed to run; venv just pins the interpreter.
+# Runtime dependencies (PyNaCl, for the signed demo feed).
+.venv/bin/pip install --quiet -r requirements.txt
 
 # Local settings file (never committed).
 if [ ! -f modem.conf ]; then
