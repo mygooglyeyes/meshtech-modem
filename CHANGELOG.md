@@ -6,6 +6,13 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.010 - 2026-09-08
+
+Feed hardening + CI gap: a full RX feed queue now drops a packet
+with a warning instead of crashing the feed client; tests run on
+every pull request (not only main-PRs), so feature branches are
+checked automatically.
+
 ## 0.0.009 - 2026-09-08
 
 Authenticated feed input (feature/feed-port): a second listener on

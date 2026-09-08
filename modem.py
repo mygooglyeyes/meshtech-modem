@@ -319,8 +319,14 @@ class FeedClient:
                     snr_s = (snr_b - 256) / 10.0 if snr_b > 127 else snr_b / 10.0
                     sig_s = sig - 256 if sig > 127 else sig
                     if self.modem.rx_feed is not None:
-                        self.modem.rx_feed.put_nowait((rssi_s, snr_s, sig_s, data))
-                        self.modem.rx_count += 1
+                        try:
+                            self.modem.rx_feed.put_nowait((rssi_s, snr_s, sig_s, data))
+                            self.modem.rx_count += 1
+                        except asyncio.QueueFull:
+                            # Feed list full: skip calmly rather than fall
+                            # over. openHop loses a moment of log; nothing
+                            # crashes.
+                            log.warning("RX feed full - feed packet dropped")
         except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError):
             pass
         finally:
