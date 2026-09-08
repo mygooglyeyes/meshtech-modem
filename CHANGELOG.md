@@ -6,6 +6,15 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.009 - 2026-09-08
+
+Authenticated feed input (feature/feed-port): a second listener on
+feed_bind:feed_port (default 127.0.0.1:5056) accepts pushes from the
+radio owner. Protection by construction - feed_token mandatory (no
+ token, no port), localhost bind by default, single slot with
+correct-token displacement, wrong tokens rejected. The openHop port
+stays receive-only by construction. Four new tests (24 total).
+
 ## 0.0.008 - 2026-09-08
 
 README documents the install & service workflow: one-time

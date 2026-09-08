@@ -19,3 +19,15 @@ token =
 # openHop's packet log). Leave off in normal use.
 demo_feed = false
 demo_interval = 10
+
+# Feed input: where the radio owner (e.g. the bot) pushes packets it
+# hears or transmits. Protected by construction:
+#   - feed_bind 127.0.0.1 = only this machine can reach the feed port
+#     (use 0.0.0.0 ONLY with a firewall rule limiting the bot's IP)
+#   - feed_token is MANDATORY - the feed port does not open without
+#     one; the bot must send this exact token to push
+#   - one feed client at a time; a correct-token newcomer displaces
+#     a stale one, wrong tokens are rejected
+feed_bind = 127.0.0.1
+feed_port = 5056
+feed_token =

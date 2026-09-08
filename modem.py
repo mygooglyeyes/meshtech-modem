@@ -267,6 +267,68 @@ class ModemClient:
         return True
 
 
+class FeedClient:
+    """One authenticated feed source pushing raw frames into the RX chain.
+
+    Protection model (by construction):
+    - lives on its own port, bound to feed_bind (default 127.0.0.1)
+    - feed_token is mandatory; empty token = port never opens
+    - single slot: a correct-token client displaces a stale one
+      (self-healing after a bot crash); wrong tokens are rejected
+    - pushes are (rssi, snr, signal_rssi, raw_bytes) tuples; the feed
+      never speaks the modem command protocol back to its client
+    """
+
+    def __init__(self, reader: asyncio.StreamReader,
+                 writer: asyncio.StreamWriter, modem: "ModemServer"):
+        self.reader = reader
+        self.writer = writer
+        self.modem = modem
+
+    async def run(self) -> None:
+        """Consume pushed tuples until the client disconnects."""
+        assert self.modem.feed_token, "feed requires a token"
+        peer = self.writer.get_extra_info("peername")
+        buf = b""
+        try:
+            while True:
+                chunk = await asyncio.wait_for(self.reader.read(4096), timeout=300)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > 65536:          # same guard as the command port
+                    buf = b""
+                    continue
+                while True:
+                    # Each push: 1B header (0x01), 1B rssi, 1B snr_x10 (signed,
+                    # offset-biased below), 1B signal_rssi, 2B len LE, data.
+                    # Tiny and trivial to parse; no CRC (TCP already does it).
+                    if len(buf) < 6:
+                        break
+                    hdr, rssi, snr_b, sig, (length,) = (
+                        buf[0], buf[1], buf[2], buf[3],
+                        struct.unpack_from("<H", buf, 4))
+                    if hdr != 0x01 or length > MAX_LORA_PAYLOAD or len(buf) < 6 + length:
+                        if hdr != 0x01 or length > MAX_LORA_PAYLOAD:
+                            log.warning("Bad feed push from %s - dropping buffer", peer)
+                            buf = b""
+                        break
+                    data = buf[6:6 + length]
+                    buf = buf[6 + length:]
+                    rssi_s = rssi - 256 if rssi > 127 else rssi
+                    snr_s = (snr_b - 256) / 10.0 if snr_b > 127 else snr_b / 10.0
+                    sig_s = sig - 256 if sig > 127 else sig
+                    if self.modem.rx_feed is not None:
+                        self.modem.rx_feed.put_nowait((rssi_s, snr_s, sig_s, data))
+                        self.modem.rx_count += 1
+        except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError):
+            pass
+        finally:
+            if self.modem.feed_client is self:
+                self.modem.feed_client = None
+                log.info("Feed client disconnected (%s) - slot free", peer)
+
+
 def _describe_config(payload: bytes) -> str:
     freq, bw, sf, cr, power, syncword, preamble = struct.unpack(RADIO_CONFIG_FMT, payload)
     return (f"{freq / 1e6:.3f}MHz BW{bw / 1000:.0f}kHz SF{sf} CR{cr} "
@@ -278,13 +340,19 @@ class ModemServer:
 
     def __init__(self, host: str = "127.0.0.1", port: int = 5055,
                  token: str = "", rx_feed: Optional[asyncio.Queue] = None,
-                 demo_feed: bool = False, demo_interval: float = 10.0):
+                 demo_feed: bool = False, demo_interval: float = 10.0,
+                 feed_bind: str = "127.0.0.1", feed_port: int = 5056,
+                 feed_token: str = ""):
         self.host = host
         self.port = port
         self.token = token
         self.rx_feed = rx_feed  # (rssi, snr, signal_rssi, data) tuples
         self.demo_feed = demo_feed
         self.demo_interval = demo_interval
+        self.feed_bind = feed_bind
+        self.feed_port = feed_port
+        self.feed_token = feed_token
+        self.feed_client: Optional["FeedClient"] = None
         self.config = struct.pack(RADIO_CONFIG_FMT, 910525000, 62500, 7, 5, 22, 0x12, 17)
         self.started = time.time()
         self.rx_count = 0
@@ -318,6 +386,42 @@ class ModemServer:
         self.tx_count += 1
         self.rx_feed.put_nowait((-100, 0.0, -100, data))   # TX loopback
         await client.send_frame(CMD_TX_DONE, struct.pack("<I", 0))
+
+    async def _handle_feed_client(self, reader: asyncio.StreamReader,
+                                  writer: asyncio.StreamWriter) -> None:
+        """Authenticate one feed client; enforce the single slot.
+
+        Handshake: client sends feed_token bytes as its first frame.
+        Correct -> slot granted (displacing a stale holder if needed).
+        Wrong/closed -> rejected and logged; never granted.
+        """
+        peer = writer.get_extra_info("peername")
+        try:
+            first = await asyncio.wait_for(reader.read(256), timeout=5)
+        except asyncio.TimeoutError:
+            writer.close()
+            return
+        supplied = first.decode("utf-8", "replace").strip()
+        if not hmac.compare_digest(supplied, self.feed_token):
+            log.warning("Feed auth REJECTED from %s", peer)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionResetError, BrokenPipeError):
+                pass
+            return
+
+        old = self.feed_client
+        self.feed_client = FeedClient(reader, writer, self)
+        if old is not None:
+            log.warning("Feed slot displaced by %s (previous client dropped)", peer)
+            old.writer.close()
+        else:
+            log.info("Feed client authenticated from %s", peer)
+        try:
+            await self.feed_client.run()
+        finally:
+            writer.close()
 
     async def feed_pump(self) -> None:
         """Broadcast everything that arrives on the RX feed to all clients."""
@@ -363,14 +467,25 @@ class ModemServer:
                 pass
 
     async def serve(self) -> None:
-        server = await asyncio.start_server(self._handle_client, self.host, self.port)
+        servers = [await asyncio.start_server(self._handle_client, self.host, self.port)]
         log.info("meshtech-modem listening on %s:%d (token %s)",
                  self.host, self.port, "set" if self.token else "open")
+
+        # Feed listener: the ONLY port that can push into the RX chain.
+        # Needs an explicit token; without one it simply does not open.
+        if self.feed_token and self.feed_port:
+            servers.append(await asyncio.start_server(
+                self._handle_feed_client, self.feed_bind, self.feed_port))
+            log.info("feed listener on %s:%d (token required)",
+                     self.feed_bind, self.feed_port)
+        elif not self.feed_token:
+            log.info("no feed_token set - feed port disabled; no pushes accepted")
+
         pump = asyncio.create_task(self.feed_pump())
         demo = asyncio.create_task(self.demo_loop()) if self.demo_feed else None
-        async with server:
+        async with servers[0]:
             try:
-                await server.serve_forever()
+                await asyncio.gather(*(s.serve_forever() for s in servers))
             finally:
                 pump.cancel()
                 if demo is not None:
@@ -459,6 +574,9 @@ def main() -> None:
     demo_feed = args.demo_feed or cfg.get("demo_feed", "").lower() in ("1", "true", "yes")
     demo_interval = (args.demo_interval if args.demo_interval is not None
                      else float(cfg.get("demo_interval", "10")))
+    feed_bind = cfg.get("feed_bind", "127.0.0.1")
+    feed_port = int(cfg.get("feed_port", "5056"))
+    feed_token = cfg.get("feed_token", "")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -466,7 +584,9 @@ def main() -> None:
     )
     modem = ModemServer(host=host, port=port, token=token,
                         rx_feed=asyncio.Queue(maxsize=1000),
-                        demo_feed=demo_feed, demo_interval=demo_interval)
+                        demo_feed=demo_feed, demo_interval=demo_interval,
+                        feed_bind=feed_bind, feed_port=feed_port,
+                        feed_token=feed_token)
     try:
         asyncio.run(modem.serve())
     except KeyboardInterrupt:
