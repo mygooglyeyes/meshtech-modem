@@ -1,0 +1,15 @@
+# meshtech-modem settings
+# Plain key = value. Blank lines and # comments are ignored.
+# After editing, restart with:  sudo systemctl restart meshtech-modem
+
+# Address to listen on. 0.0.0.0 = reachable from other machines
+# (e.g. openHop on another box). 127.0.0.1 = this machine only.
+host = 0.0.0.0
+
+# TCP port openHop connects to. Must match the port set in openHop's
+# pymc_tcp radio config.
+port = 5055
+
+# Shared secret openHop must send in its AUTH handshake. Leave empty
+# for no auth (fine on a trusted home LAN).
+token =

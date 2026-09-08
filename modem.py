@@ -355,19 +355,49 @@ class ModemServer:
                 pump.cancel()
 
 
+def load_config(path: str) -> dict:
+    """Read a simple key = value config file (no dependencies).
+
+    Supported keys: host, port, token. Blank lines and # comments are
+    ignored. Values keep internal whitespace; keys are case-insensitive.
+    Missing file -> empty dict (defaults apply).
+    """
+    cfg: dict[str, str] = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                cfg[key.strip().lower()] = value.strip()
+    except FileNotFoundError:
+        log.warning("Config file %s not found - using defaults", path)
+    return cfg
+
+
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="openHop pymc_tcp modem emulator")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5055)
-    parser.add_argument("--token", default="")
+    parser.add_argument("--config", default="modem.conf",
+                        help="config file (default: modem.conf)")
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--token", default=None)
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
+
+    # Precedence: command line > config file > built-in defaults.
+    cfg = load_config(args.config)
+    host = args.host if args.host is not None else cfg.get("host", "127.0.0.1")
+    port = args.port if args.port is not None else int(cfg.get("port", "5055"))
+    token = args.token if args.token is not None else cfg.get("token", "")
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    modem = ModemServer(host=args.host, port=args.port, token=args.token,
+    modem = ModemServer(host=host, port=port, token=token,
                         rx_feed=asyncio.Queue(maxsize=1000))
     try:
         asyncio.run(modem.serve())

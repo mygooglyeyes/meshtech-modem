@@ -6,6 +6,15 @@ language, newest first.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.005 - 2026-09-08
+
+Service install for the Linux box: `install.sh` sets up a systemd
+service (starts on boot, restarts on crash) that runs `run.sh`, which
+manages the venv invisibly. Settings live in a plain `modem.conf`
+(host, port, token) - the repo ships `modem.conf.example`; the real
+file is local-only. modem.py now reads the config file; command-line
+flags still override it.
+
 ## 0.0.004 - 2026-09-08
 
 CI also runs on every push to main, not just DEV and main-PRs. This

@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+# Local settings - never committed (copy of modem.conf.example)
+modem.conf
